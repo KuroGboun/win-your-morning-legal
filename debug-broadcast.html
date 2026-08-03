@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>debug broadcast</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; min-height: 100vh;
+    background: #16211b; color: #f4f1ea;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { color: rgba(244,241,234,0.55); margin: 0 0 24px; font-size: 13px; }
+  /* Two columns — targeting on the left, composing on the right — so the wide
+     desktop the dashboard is used on isn't mostly empty gutters. Stacks back to
+     one column on a narrow window. */
+  .cols { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 30px; align-items: start; }
+  @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+  section { margin-bottom: 22px; }
+  label { display: block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: rgba(244,241,234,0.5); margin-bottom: 6px; }
+  input[type=text], input[type=password], textarea {
+    width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px; padding: 10px 12px; color: #f4f1ea; font-size: 14px; font-family: inherit;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 160px; }
+  button {
+    background: rgba(255,255,255,0.12); border: none; border-radius: 10px; color: #f4f1ea;
+    padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: rgba(255,255,255,0.18); }
+  button.gold { background: #d9a441; color: #16211b; }
+  button.gold:hover { background: #e6b559; }
+  button.chip { padding: 6px 12px; font-weight: 500; font-size: 12px; margin: 0 6px 6px 0; }
+  #members { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; }
+  .member { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  #presets { display: flex; flex-wrap: wrap; }
+  #queue { display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 4px 12px; }
+  .slot { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .slot:last-child { border-bottom: none; }
+  .slot .head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .slot .head strong { font-size: 14px; }
+  .slot .time { opacity: 0.6; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .slot .meta { font-size: 12px; opacity: 0.65; margin-top: 2px; }
+  .slot .meta.sent { color: #8fce9f; opacity: 1; }
+  .slot .meta.passed { color: #e08a7d; opacity: 1; }
+  .slot .actions { margin-top: 6px; }
+  .slot .editor { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.12); }
+  .slot .editor textarea { min-height: 54px; }
+  #status { margin-top: 14px; font-size: 13px; white-space: pre-wrap; }
+  #status.err { color: #e08a7d; }
+  #status.ok { color: #8fce9f; }
+  /* Inline text-editor bits on each Today's-queue row. */
+  .slot .meta.on { color: #8fce9f; opacity: 1; }
+  .slot .meta.off { color: #e0b45a; opacity: 1; }
+  .ovopts { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 9px; }
+  .ovopts label.inline { display: inline-flex; align-items: center; gap: 5px; text-transform: none;
+    letter-spacing: 0; font-size: 13px; color: #f4f1ea; margin: 0; }
+  .ovopts input[type=datetime-local] { width: auto; flex: 0 0 auto; padding: 6px 8px; font-size: 13px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px;
+    color: #f4f1ea; color-scheme: dark; }
+  .ovopts input[type=datetime-local]:disabled { opacity: 0.4; }
+  .ovactions { margin-top: 10px; display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🐞 debug broadcast</h1>
+  <p class="sub">Send a real push to squadmates' devices. Secret + group id are remembered in this browser only.</p>
+
+  <div class="cols">
+    <div class="col">
+      <section>
+        <label>Secret</label>
+        <input id="secret" type="password" placeholder="DEBUG_BROADCAST_SECRET" />
+      </section>
+
+      <section>
+        <label>Group id</label>
+        <div class="row">
+          <input id="groupId" type="text" placeholder="group id" value="2ac77829-acd4-4093-9f09-3410ae412a3f" />
+          <button id="load">Load squad</button>
+          <button id="loadBuilds">📦 Builds</button>
+        </div>
+        <div id="builds" style="margin-top:8px"></div>
+      </section>
+
+      <section>
+        <label>Recipients</label>
+        <div id="members"><span style="opacity:0.5">Load the squad to pick recipients.</span></div>
+        <div class="row" style="margin-top:8px">
+          <button id="selAll">All</button>
+          <button id="selNone">None</button>
+          <button id="selWon">🏆 Won today</button>
+          <button id="selBummed">💤 Bummed today</button>
+        </div>
+      </section>
+
+      <section>
+        <label>Today's queue (server nudges)</label>
+        <div id="queue"><span style="opacity:0.5">Load the squad to see today's queue.</span></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section>
+        <label>Quick fill</label>
+        <div id="presets"></div>
+      </section>
+
+      <section>
+        <label>Title</label>
+        <input id="title" type="text" value="win your morning" />
+      </section>
+
+      <section>
+        <label>Body</label>
+        <textarea id="body" placeholder="Whatever you want the squad to see..."></textarea>
+      </section>
+
+      <button class="gold" id="send">Send to selected</button>
+      <div id="status"></div>
+    </div>
+  </div>
+</main>
+<script>
+// The deployed debug-broadcast function — a pure JSON API (see index.ts).
+// This file is opened as a plain local HTML file, not served by Supabase, so
+// every request goes to the function's absolute URL over CORS.
+const API = 'https://bdwaqpnycvywhhuzhlga.supabase.co/functions/v1/debug-broadcast';
+
+const $ = (id) => document.getElementById(id);
+const secretEl = $('secret'), groupIdEl = $('groupId'), statusEl = $('status');
+secretEl.value = localStorage.getItem('dbSecret') || '';
+groupIdEl.value = localStorage.getItem('dbGroupId') || groupIdEl.value;
+secretEl.addEventListener('change', () => localStorage.setItem('dbSecret', secretEl.value));
+groupIdEl.addEventListener('change', () => localStorage.setItem('dbGroupId', groupIdEl.value));
+
+const PRESETS = [
+  { label: 'Someone posted', title: 'win your morning', body: 'Maya just logged their morning 👀 Tap to see how it went.' },
+  { label: 'Comment', title: 'win your morning', body: 'Maya commented on your morning: "nice one!"' },
+  { label: 'Mention', title: 'win your morning', body: 'Maya tagged you in a comment: "cc @you"' },
+  { label: 'Nudge · halfway', kind: 'nudge_halfway', title: 'win your morning', body: "Morning's slipping by. You haven't logged yet. ☀️" },
+  { label: 'Nudge · last call', kind: 'nudge_last_call', title: 'win your morning', body: '30 minutes left to log before you get auto-bummed. ⏳' },
+  { label: 'Nudge · streak on the line', kind: 'nudge_streak_risk', title: 'win your morning', body: "Window almost closed. Don't lose your 12-day streak. 🔥" },
+  { label: 'Afternoon · won', kind: 'afternoon_won', title: 'win your morning', body: "How does it feel? Hope you're having a great day. This is what winning your morning gets you. ☀️" },
+  { label: 'Afternoon · bummed', kind: 'afternoon_bummed', title: 'win your morning', body: "Can't lie bro your're a bum, but no worries, tomorrow's a fresh shot. 🌅" },
+  { label: 'Rest day · logged win', kind: 'afternoon_won', title: 'win your morning', body: "Nice one. No points today, but you still showed up. That's the habit. ☀️" },
+  { label: "Rest day · didn't log", kind: 'afternoon_bummed', title: 'win your morning', body: "You didn't log today — no worries, it's an inactive day, so no points or streak lost. Get ready for Monday. 🌅" },
+  { label: 'Bums ready', kind: 'bums_ready', title: 'win your morning', body: 'The bums of the day are in. Come see who bummed it. 🛌' },
+  { label: 'Window changed', kind: 'window_changed', title: 'win your morning', body: 'Kuro moved the check-in deadline to 10 AM ⏰ New window: 5 AM – 10 AM.' },
+  { label: 'Weekly recap', kind: 'weekly_recap', title: 'win your morning', body: 'Your weekly recap is in 🌅 The champion, the bums of the week, and where you landed — come see.' },
+  { label: 'Update available', title: 'win your morning', body: 'A new version is ready — update on TestFlight to get it. 🌅' },
+];
+const presetsEl = $('presets');
+PRESETS.forEach((p) => {
+  const b = document.createElement('button');
+  b.className = 'chip';
+  b.textContent = p.label;
+  b.onclick = () => { $('title').value = p.title; $('body').value = p.body; pendingClaimKind = null; pendingClaimDate = null; pendingPushKind = p.kind || null; };
+  presetsEl.appendChild(b);
+});
+
+let members = [];
+function renderMembers() {
+  const box = $('members');
+  if (members.length === 0) { box.innerHTML = '<span style="opacity:0.5">No members loaded.</span>'; return; }
+  box.innerHTML = members.map((m) => {
+    const badge = m.status === 'won' ? ' 🏆' : m.status === 'bummed' ? ' 💤' : '';
+    return '<label class="member"><input type="checkbox" class="mchk" value="' + m.id + '" checked> ' + m.name + badge + '</label>';
+  }).join('');
+}
+
+/** Checks only members whose today's result (from ?action=members) matches
+ *  `status` — 'won' or 'bummed'. Unlike selAll/selNone this reads real data,
+ *  so "load squad" must run first or it just unchecks everyone. */
+function selectByStatus(status) {
+  document.querySelectorAll('.mchk').forEach((c) => {
+    const m = members.find((x) => x.id === c.value);
+    c.checked = m?.status === status;
+  });
+}
+
+// ── Today's queue — the four send-nudges slots for the loaded group. Loaded
+// alongside members (same groupId), refreshed after every pause/resume/send so
+// the panel always reflects what the cron will actually see next.
+let queueSlots = [];
+
+function renderQueue() {
+  const box = $('queue');
+  if (queueSlots.length === 0) { box.innerHTML = '<span style="opacity:0.5">No queue loaded.</span>'; return; }
+  box.innerHTML = queueSlots.map((s) => {
+    // claimedCount is scoped to THIS row's own targets — afternoon·won and
+    // afternoon·bummed share one underlying nudge_log kind, but each row only
+    // looks at whether ITS OWN recipients are claimed, so they read (and
+    // pause/resume) independently.
+    const claimed = s.claimedCount > 0;
+    const notToday = s.activeToday === false;
+    const metaClass = notToday ? '' : claimed ? 'sent' : s.passed ? 'passed' : '';
+    const metaText = notToday
+      ? ('Fires ' + s.time + ' — not today')
+      : claimed
+        ? ('Claimed for ' + s.claimedCount + '/' + s.targetCount + ' of these — cron will skip them')
+        : s.passed ? "Time's passed — never claimed" : (s.targetCount + ' would receive it right now');
+    const canPause = !notToday && !claimed && !s.passed && s.targetCount > 0;
+    const canResume = !notToday && claimed && !s.passed;
+
+    // Copy-override state for this row's automated text. `override.active` means
+    // it's live (permanent or not-yet-expired); the editor prefills from it.
+    const ov = s.override;
+    const ovLive = ov && ov.active;
+    const ovLine = ovLive
+      ? '<div class="meta on">✎ Custom text · ' + (ov.expiresAt ? 'until ' + new Date(ov.expiresAt).toLocaleString() : 'permanent') + '</div>'
+      : (ov ? '<div class="meta off">✎ Custom text expired — using default</div>' : '');
+    const current = ovLive ? ov.body : s.defaultBody;
+    const timed = !!(ovLive && ov.expiresAt);
+    const untilVal = timed ? toLocalInput(ov.expiresAt) : '';
+
+    return '<div class="slot" data-key="' + s.key + '">' +
+      '<div class="head"><strong>' + s.label + '</strong><span class="time">' + s.time + '</span></div>' +
+      '<div class="meta ' + metaClass + '">' + metaText + '</div>' +
+      ovLine +
+      '<div class="actions">' +
+        (canPause ? '<button class="chip qpause" data-key="' + s.key + '">Pause</button>' : '') +
+        (canResume ? '<button class="chip qresume" data-key="' + s.key + '">Resume</button>' : '') +
+        '<button class="chip quse" data-key="' + s.key + '">Use this, edit &amp; send →</button>' +
+        '<button class="chip qedit" data-key="' + s.key + '">✎ Edit text</button>' +
+      '</div>' +
+      '<div class="editor" style="display:none">' +
+        '<textarea class="edbody">' + escapeHtml(current) + '</textarea>' +
+        '<div class="ovopts">' +
+          '<label class="inline"><input type="radio" name="ed-' + s.key + '" class="edperm"' + (timed ? '' : ' checked') + '> Keep permanently</label>' +
+          '<label class="inline"><input type="radio" name="ed-' + s.key + '" class="edtimed"' + (timed ? ' checked' : '') + '> Until</label>' +
+          '<input type="datetime-local" class="eduntil" value="' + untilVal + '"' + (timed ? '' : ' disabled') + '>' +
+        '</div>' +
+        '<div class="ovactions">' +
+          '<button class="chip gold edsave" data-kind="' + s.overrideKind + '">Save</button>' +
+          (ov ? '<button class="chip edreset" data-kind="' + s.overrideKind + '">Reset to default</button>' : '') +
+          '<button class="chip edcancel">Cancel</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  document.querySelectorAll('.qpause').forEach((b) => b.onclick = () => pauseSlot(b.dataset.key));
+  document.querySelectorAll('.qresume').forEach((b) => b.onclick = () => resumeSlot(b.dataset.key));
+  document.querySelectorAll('.quse').forEach((b) => b.onclick = () => useSlot(b.dataset.key));
+  document.querySelectorAll('.slot').forEach((slot) => {
+    const editor = slot.querySelector('.editor');
+    const edit = slot.querySelector('.qedit');
+    if (edit) edit.onclick = () => { editor.style.display = editor.style.display === 'none' ? 'block' : 'none'; };
+    const cancel = slot.querySelector('.edcancel');
+    if (cancel) cancel.onclick = () => { editor.style.display = 'none'; };
+    const timed = slot.querySelector('.edtimed'), perm = slot.querySelector('.edperm'), until = slot.querySelector('.eduntil');
+    if (timed) { const sync = () => { until.disabled = !timed.checked; }; timed.onchange = sync; perm.onchange = sync; }
+    const save = slot.querySelector('.edsave');
+    if (save) save.onclick = () => saveSlotOverride(slot, save.dataset.kind);
+    const reset = slot.querySelector('.edreset');
+    if (reset) reset.onclick = () => resetSlotOverride(reset.dataset.kind);
+  });
+}
+
+/** Save the edited automated text as a real override (permanent, or until the
+ *  picked time). The senders read it on their next fire. Reloads the queue. */
+async function saveSlotOverride(slot, kind) {
+  const body = slot.querySelector('.edbody').value;
+  if (!body.trim()) { statusEl.className = 'err'; statusEl.textContent = 'Text is empty.'; return; }
+  let expiresAt = null;
+  if (slot.querySelector('.edtimed').checked) {
+    const untilVal = slot.querySelector('.eduntil').value;
+    if (!untilVal) { statusEl.className = 'err'; statusEl.textContent = 'Pick a date/time, or choose Keep permanently.'; return; }
+    expiresAt = new Date(untilVal).toISOString();
+  }
+  statusEl.className = ''; statusEl.textContent = 'Saving text...';
+  try {
+    const res = await fetch(API, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-debug-secret': secretEl.value },
+      body: JSON.stringify({ secret: secretEl.value, action: 'saveOverride', kind, body, expiresAt }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'failed');
+    statusEl.className = 'ok';
+    statusEl.textContent = 'Saved — the app will use this text ' + (expiresAt ? 'until ' + new Date(expiresAt).toLocaleString() : 'from now on') + '.';
+    await loadQueue();
+  } catch (e) { statusEl.className = 'err'; statusEl.textContent = 'Error: ' + e.message; }
+}
+
+/** Drop the override, reverting this automated text to its default. */
+async function resetSlotOverride(kind) {
+  statusEl.className = ''; statusEl.textContent = 'Resetting...';
+  try {
+    const res = await fetch(API, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-debug-secret': secretEl.value },
+      body: JSON.stringify({ secret: secretEl.value, action: 'deleteOverride', kind }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'failed');
+    statusEl.className = 'ok'; statusEl.textContent = 'Back to the default text.';
+    await loadQueue();
+  } catch (e) { statusEl.className = 'err'; statusEl.textContent = 'Error: ' + e.message; }
+}
+
+async function loadQueue() {
+  try {
+    const res = await fetch(API + '?action=queue&groupId=' + encodeURIComponent(groupIdEl.value), { headers: { 'x-debug-secret': secretEl.value } });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'failed');
+    queueSlots = json.slots;
+    renderQueue();
+  } catch (e) {
+    $('queue').innerHTML = '<span style="opacity:0.5">Could not load queue: ' + e.message + '</span>';
+  }
+}
+
+// Set when "Use this" prefills a slot's copy, so Send also claims that slot
+// for the recipients it actually reaches — otherwise the cron would later
+// fire its own automatic version on top of your edited one. Cleared after a
+// successful send (or a plain preset pick shouldn't silently claim anything).
+let pendingClaimKind = null;
+let pendingClaimDate = null; // the slot's dedup date (weekly recap claims by its week's Monday)
+// data.kind for the push itself, so tapping the manual send deep-links like
+// the automated one it replaces (nudges -> check-in, bums -> reveal, ...).
+let pendingPushKind = null;
+
+function useSlot(key) {
+  const slot = queueSlots.find((s) => s.key === key);
+  if (!slot) return;
+  $('title').value = slot.defaultTitle;
+  // Load the effective current text (its live override, or the default).
+  $('body').value = slot.override && slot.override.active ? slot.override.body : slot.defaultBody;
+  document.querySelectorAll('.mchk').forEach((c) => { c.checked = slot.targetIds.includes(c.value); });
+  pendingClaimKind = slot.kind;
+  pendingClaimDate = slot.nudgeDate;
+  pendingPushKind = slot.overrideKind || null;
+  statusEl.className = 'ok';
+  statusEl.textContent = 'Loaded "' + slot.label + '" — edit the text if you want, then Send. ' +
+    slot.targetIds.length + ' recipient(s) preselected. Sending marks this row done so the cron won\'t also fire it.';
+}
+
+async function pauseSlot(key) {
+  const slot = queueSlots.find((s) => s.key === key);
+  if (!slot) return;
+  statusEl.className = ''; statusEl.textContent = 'Pausing...';
+  try {
+    const res = await fetch(API, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-debug-secret': secretEl.value },
+      body: JSON.stringify({
+        secret: secretEl.value, action: 'pause', groupId: groupIdEl.value,
+        kind: slot.kind, profileIds: slot.targetIds, nudgeDate: slot.nudgeDate,
+      }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'failed');
+    statusEl.className = 'ok';
+    statusEl.textContent = 'Paused "' + slot.label + '" — the cron will skip these ' + json.paused + ' member(s) today.';
+    await loadQueue();
+  } catch (e) {
+    statusEl.className = 'err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function resumeSlot(key) {
+  const slot = queueSlots.find((s) => s.key === key);
+  if (!slot) return;
+  statusEl.className = ''; statusEl.textContent = 'Resuming...';
+  try {
+    const res = await fetch(API, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-debug-secret': secretEl.value },
+      body: JSON.stringify({
+        secret: secretEl.value, action: 'resume', groupId: groupIdEl.value,
+        kind: slot.kind, profileIds: slot.targetIds, nudgeDate: slot.nudgeDate,
+      }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'failed');
+    statusEl.className = 'ok';
+    statusEl.textContent = 'Cleared ' + json.resumed + ' claim(s) for "' + slot.label + '" — it can fire again today if still upcoming.';
+    await loadQueue();
+  } catch (e) {
+    statusEl.className = 'err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+$('load').onclick = async () => {
+  statusEl.className = ''; statusEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(API + '?action=members&groupId=' + encodeURIComponent(groupIdEl.value), { headers: { 'x-debug-secret': secretEl.value } });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'failed');
+    members = json.members;
+    renderMembers();
+    await loadQueue();
+    statusEl.className = 'ok'; statusEl.textContent = 'Loaded ' + members.length + ' member(s).';
+  } catch (e) {
+    statusEl.className = 'err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+};
+
+$('loadBuilds').onclick = async () => {
+  const el = $('builds');
+  el.innerHTML = '<span style="opacity:0.5">Loading…</span>';
+  try {
+    const res = await fetch(API + '?action=builds&groupId=' + encodeURIComponent(groupIdEl.value), { headers: { 'x-debug-secret': secretEl.value } });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || 'failed');
+
+    const rows = j.people.map((p) => {
+      const build = p.build !== null ? p.build : '—';
+      return '<div style="display:flex;justify-content:space-between;padding:2px 0">' +
+        '<span>' + p.name + '</span>' +
+        '<span style="opacity:0.7">' + build + '</span></div>';
+    }).join('');
+
+    el.innerHTML = '<div style="font-size:13px">' + rows + '</div>';
+  } catch (e) {
+    el.innerHTML = '<span style="color:#e66">Error: ' + e.message + '</span>';
+  }
+};
+
+$('selAll').onclick = () => document.querySelectorAll('.mchk').forEach((c) => c.checked = true);
+$('selNone').onclick = () => document.querySelectorAll('.mchk').forEach((c) => c.checked = false);
+$('selWon').onclick = () => selectByStatus('won');
+$('selBummed').onclick = () => selectByStatus('bummed');
+
+$('send').onclick = async () => {
+  const recipientIds = Array.from(document.querySelectorAll('.mchk:checked')).map((c) => c.value);
+  if (recipientIds.length === 0) { statusEl.className = 'err'; statusEl.textContent = 'Pick at least one recipient.'; return; }
+  if (!$('body').value.trim()) { statusEl.className = 'err'; statusEl.textContent = 'Body is empty.'; return; }
+  statusEl.className = ''; statusEl.textContent = 'Sending...';
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-debug-secret': secretEl.value },
+      body: JSON.stringify({
+        secret: secretEl.value,
+        groupId: groupIdEl.value,
+        title: $('title').value,
+        body: $('body').value,
+        recipientIds,
+        claimKind: pendingClaimKind || undefined,
+        claimDate: pendingClaimDate || undefined,
+        kind: pendingPushKind || undefined,
+      }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'failed');
+    statusEl.className = 'ok';
+    statusEl.textContent = 'Sent to ' + json.recipients + ' recipient(s), ' + json.tokens + ' token(s) — ' + json.sent + ' ok, ' + json.failed + ' failed.' +
+      (pendingClaimKind ? ' Marked "' + pendingClaimKind + '" done.' : '');
+    pendingClaimKind = null;
+    pendingClaimDate = null;
+    pendingPushKind = null;
+    await loadQueue();
+  } catch (e) {
+    statusEl.className = 'err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+};
+
+// Helpers for the inline queue-row text editor (see renderQueue).
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function toLocalInput(iso) {
+  const d = new Date(iso), pad = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+</script>
+</body>
+</html>
