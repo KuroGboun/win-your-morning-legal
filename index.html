@@ -37,11 +37,18 @@
   a{color:var(--terra); text-decoration:none}
   a:hover{color:var(--terra-soft)}
 
-  .page{width:100%; max-width:1440px; margin:0 auto; overflow:hidden; background:var(--paper)}
+  /* Full-bleed: the sky runs edge to edge (no max-width here), so a wide screen
+     never shows the body colour as side bands. */
+  .page{width:100%; margin:0 auto; overflow:hidden; background:var(--paper)}
 
   /* ── Hero ─────────────────────────────────────────────────────────── */
   .hero{position:relative; min-height:940px; overflow:hidden; display:flex; flex-direction:column;
         background:linear-gradient(178deg,#6FA3DA 0%,#4C86C6 34%,#8DB8E4 72%,#CFE0F1 100%);}
+  /* The layout stays composed in a centred 1440 frame; only the sky bleeds full
+     width. Floaters/nav/content anchor to THIS, so they never fly to the edges
+     of an ultra-wide monitor. */
+  .frame{position:relative; z-index:1; width:100%; max-width:1440px; margin:0 auto;
+         flex:1; display:flex; flex-direction:column}
   .cloud{position:absolute; border-radius:50%; pointer-events:none}
   .c1{left:-60px; top:120px; width:460px; height:240px; background:rgba(255,255,255,.42); filter:blur(38px)}
   .c2{right:-80px; top:300px; width:560px; height:300px; background:rgba(255,255,255,.36); filter:blur(46px)}
@@ -133,6 +140,7 @@
     <div class="cloud c2"></div>
     <div class="cloud c3"></div>
 
+    <div class="frame">
     <!-- Floating draggable emoji -->
     <div class="float bobA" id="f1"  data-float="obj1"  style="--s:92px;  left:55.6%; top:12.4%"><img src="assets/emoji-obj1.png"  alt=""></div>
     <div class="float bobC" id="f2"  data-float="obj2"  style="--s:114px; left:74.8%; top:10.5%"><img src="assets/emoji-obj2.png"  alt=""></div>
@@ -168,6 +176,7 @@
       </form>
       <div class="msg" id="formMsg" role="status" aria-live="polite"></div>
       <div class="counter" id="counter">68 PEOPLE AHEAD OF YOU</div>
+    </div>
     </div>
   </section>
 </div>
